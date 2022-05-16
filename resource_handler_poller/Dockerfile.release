@@ -1,0 +1,25 @@
+FROM cytoacrtest.azurecr.io/cytorelease:golang as builder
+
+# submodules and makefile
+RUN mkdir /workdir
+COPY protocols /workdir/protocols
+COPY Makefile /workdir
+WORKDIR /workdir
+RUN make proto
+
+# go
+COPY go.mod .
+COPY go.sum .
+RUN go mod download
+
+# project files
+COPY DBHelper.go .
+COPY main.go .
+COPY poller.go .
+
+RUN make build
+
+FROM alpine:edge
+COPY --from=builder workdir/bin/rh-poller .
+
+ENTRYPOINT ["./rh-poller"]

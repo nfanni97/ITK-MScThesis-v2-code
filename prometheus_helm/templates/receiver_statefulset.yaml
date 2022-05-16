@@ -1,0 +1,46 @@
+{{- with .Values.eventhubRecevier }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "data-collecting.fullname" (list $ .) }}
+  labels:
+    {{- include "data-collecting.labels" $ | nindent 4}}
+spec:
+  {{- if not $.Values.autoscaling.enabled }}
+  replicas: {{ .replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ .appName | quote }}
+  serviceName: {{ print .appName "-headless-service" | quote }}
+  replicas: {{ .replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: {{ .appName | quote }}
+    spec:
+      serviceAccountName: {{ include "data-collecting.serviceAccountName" (list $ .) | quote }}
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: eph-db-writer
+        image: "{{ .image.repository }}:{{ .image.tag | default "current" }}"
+        imagePullPolicy: {{ .image.pullPolicy }}
+        resources:
+          {{- toYaml .resources | nindent 10 }}
+        command: ["/bin/sh"]
+        ports:
+          - containerPort: 80
+        args:
+          - "-c"
+          - "export PARTITION_ID=${HOSTNAME##*-}; ./eventhub-receiver"
+          {{- include "data-collecting.transformArgs" .args | indent 10 }}
+        env:
+          - name: EVENTHUB_CONN
+            valueFrom:
+              secretKeyRef:
+                name: eventhub-creds
+                key: connstring
+{{- end }}

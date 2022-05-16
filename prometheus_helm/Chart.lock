@@ -1,0 +1,9 @@
+dependencies:
+- name: prometheus
+  repository: https://prometheus-community.github.io/helm-charts
+  version: 15.0.4
+- name: cadvisor
+  repository: https://ckotzbauer.github.io/helm-charts
+  version: 1.4.0
+digest: sha256:8b3049ce6c8bddaa9b299b5ec125c7bee5723997bf0402ae2ee5abf72a8abe77
+generated: "2022-03-21T17:42:25.898941942+01:00"

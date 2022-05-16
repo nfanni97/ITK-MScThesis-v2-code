@@ -1,0 +1,1 @@
+FROM cytoacrtest.azurecr.io/cytodevel:golang

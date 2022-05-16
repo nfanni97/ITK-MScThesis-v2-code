@@ -1,0 +1,14 @@
+apiVersion: v2
+name: data-collecting
+description: A Helm chart to deploy everything that is necessary for collecting data about running simulations.
+type: application
+version: 0.1.0
+dependencies:
+  - name: prometheus
+    version: ~15.0.4
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: prometheus.enabled
+  - name: cadvisor
+    version: ~1.4.0
+    repository: https://ckotzbauer.github.io/helm-charts
+    condition: cadvisor.enabled

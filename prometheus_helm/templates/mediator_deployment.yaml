@@ -1,0 +1,55 @@
+{{- with .Values.rhmediator }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "data-collecting.fullname" (list $ .)}}
+  labels:
+    {{- include "data-collecting.labels" $ | nindent 4 }}
+spec:
+  {{- if not $.Values.autoscaling.enabled }}
+  replicas: {{ .replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ .appName | quote }}
+  template:
+    metadata:
+      labels:
+        app: {{ .appName | quote }}
+    spec:
+      serviceAccountName: {{ include "data-collecting.serviceAccountName" (list $ .) | quote }}
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: local-shared-data
+          emptyDir: {}
+      containers:
+      - name: rh-mediator
+        image: "{{ .image.repository }}:{{ .image.tag | default "current" }}"
+        imagePullPolicy: {{ .image.pullPolicy }}
+        resources:
+          {{- toYaml .resources | nindent 10 }}
+        args:
+          {{- include "data-collecting.transformArgs" .args | indent 10 }}
+        ports:
+        - containerPort: {{ .port }}
+        volumeMounts:
+          - mountPath: /podlocalfiles
+            name: local-shared-data
+      {{- with .fhclient }}
+      - name: fh-client
+        image: "{{ .image.repository }}:{{ .image.tag | default "current"}}"
+        imagePullPolicy: {{ .image.pullPolicy }}
+        ports:
+        - containerPort: {{ .port }}
+        args:
+          {{- include "data-collecting.transformArgs" .args | indent 10 }}
+        resources:
+          {{- toYaml .resources | nindent 10 }}
+        volumeMounts:
+          - mountPath: /podlocalfiles
+            name: local-shared-data
+      {{- end }} 
+{{- end }}

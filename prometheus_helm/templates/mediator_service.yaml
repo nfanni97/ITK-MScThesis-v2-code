@@ -1,0 +1,14 @@
+{{- with .Values.rhmediator }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ print .appName "-service" | quote }}
+spec:
+  selector:
+    app: {{ .appName | quote }}
+  ports:
+  - port: {{ .port }}
+    targetPort: {{ .port }}
+    protocol: TCP
+  type: ClusterIP
+{{- end }}

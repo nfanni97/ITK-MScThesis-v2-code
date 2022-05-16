@@ -1,0 +1,12 @@
+{{- with .Values.eventhubRecevier }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ print .appName "-headless-service" | quote }}
+spec:
+  selector:
+    app: {{ .appName | quote }}
+  ports:
+  - port: 80
+  clusterIP: None
+{{- end }}

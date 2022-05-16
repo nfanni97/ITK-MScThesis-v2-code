@@ -1,0 +1,199 @@
+autoscaling:
+  enabled: false
+fullnameOverride: ""
+nameOverride: ""
+# for minikube
+# imagePullSecrets:
+  # - name: cytocred
+
+rbac:
+  podReaderBaseName: pod-reader
+  secretReaderBaseName: secret-reader
+
+rhmediator:
+  image:
+    repository: cytoacrtest.azurecr.io/resource-handler-mediator
+    tag: !!str 1.0
+    pullPolicy: IfNotPresent
+  resources: {}
+  replicaCount: 1
+  args:
+    secretName: prom-db-creds
+    secretNamespace: monitoring
+    fhHost: localhost
+    # needs to be the same as fhclient.port!!!
+    fhPort: 8085
+  port: 8205
+  fhclient:
+    image:
+      repository: cytoacrtest.azurecr.io/filehandler
+      tag: ""
+      pullPolicy: IfNotPresent
+    port: 8085
+    resources:
+      requests:
+        cpu: 100m
+        memory: 250M
+      limits:
+        cpu: 1000m
+        memory: 1G
+    args:
+      service: AzureBlob
+      azureSASecret: azurefile-creds
+  appName: rh-mediator
+  serviceAccountName: ""
+
+eventhubRecevier:
+  image:
+    repository: cytoacrtest.azurecr.io/eventhub-receiver
+    tag: !!str 1.0
+    pullPolicy: Always
+  resources: {}
+  replicaCount: 2
+  args:
+    secretName: prom-db-creds
+    secretNamespace: monitoring
+  appName: eh-receiver
+  serviceAccountName: ""
+
+rhpoller:
+  image:
+    repository: cytoacrtest.azurecr.io/resource-handler-poller
+    tag: !!str 1.0
+    pullPolicy: Always
+  resources: {}
+  replicaCount: 1
+  # key-value pairs that will be embedded as a list like so: ["-key1","value1","-key2","value2"...]
+  args:
+    labelKey: monitoring
+    labelValue: true
+    secretName: prom-db-creds
+    secretNamespace: monitoring
+  appName: rh-poller
+  serviceAccountName: ""
+
+# TODO: enable before release
+prometheus:
+  enabled: true
+  alertmanager:
+    enabled: false
+  kube-state-metrics:
+    metricLabelsAllowlist:
+      - pods=[monitoring]
+  nodeExporter:
+    enabled: false
+  server:
+    global:
+      scrape_interval: 2s
+      evaluation_interval: 2s
+    sidecarContainers:
+      eventhub-adapter:
+        name: eventhub-adapter
+        image: bryanklewis/prometheus-eventhubs-adapter:v0.4.4
+        ports:
+          - containerPort: 9201
+        resources:
+          limits:
+            memory: 128Mi
+            cpu: 500m
+        env:
+          - name: ADAP_WRITE_CONNSTRING
+            valueFrom:
+              secretKeyRef:
+                name: eventhub-connection
+                key: connection
+    remoteWrite:
+    - url: "http://127.0.0.1:9201/write"
+      write_relabel_configs:
+        - source_labels: ['__name__']
+          regex: own_memory_usage|own_cpu_usage
+          action: keep
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  pushgateway:
+    enabled: false
+  serverFiles:
+    recording_rules.yml:
+      groups:
+        - name: data-collection-ai
+          rules:
+            - record: own_memory_usage
+              expr: container_memory_max_usage_bytes{container='',image='',uid!=''} * on(uid) kube_pod_labels{label_monitoring='true',uid!=''}
+            - record: own_cpu_usage
+              expr: sum by(uid) (rate(container_cpu_usage_seconds_total{container='',image='',uid!=''}[2m]) * on(uid) kube_pod_labels{label_monitoring='true',uid!=''})
+    prometheus.yml:
+      scrape_configs:
+        - job_name: 'kubernetes-nodes-cadvisor'
+          scheme: https
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            insecure_skip_verify: true
+          bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          kubernetes_sd_configs:
+            - role: pod
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+              action: keep
+              regex: true
+            - action: labelmap
+              regex: __meta_kubernetes_node_label_(.+)
+            - target_label: __address__
+              replacement: kubernetes.default.svc:443
+            - source_labels: [__meta_kubernetes_pod_node_name]
+              regex: (.+)
+              target_label: __metrics_path__
+              replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              action: keep
+              regex: container_cpu_usage_seconds_total|container_memory_max_usage_bytes
+            - source_labels: [id]
+              action: replace
+              regex: .*pod(.{36})
+              target_label: uid
+              replacement: $1
+            - regex: id
+              action: labeldrop
+        - job_name: 'kubernetes-service-endpoints'
+          kubernetes_sd_configs:
+            - role: endpoints
+          honor_labels: true
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+              action: keep
+              regex: true
+            - source_labels: [__meta_kubernetes_service_name]
+              action: replace
+              target_label: service
+            - source_labels: [__meta_kubernetes_pod_node_name]
+              action: replace
+              target_label: node
+            - source_labels: [__meta_kubernetes_namespace]
+              action: replace
+              target_label: namespace
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: kube_pod_labels
+              action: keep
+
+# TODO: enable before release
+cadvisor:
+  enabled: true
+  container:
+    additionalArgs:
+      - --housekeeping_interval=1s
+      - --max_housekeeping_interval=3s
+      - --event_storage_event_limit=default=0
+      - --event_storage_age_limit=default=0
+      - --docker_only
+      - --enable_metrics=memory
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  podAnnotations:
+    prometheus.io/scrape: true

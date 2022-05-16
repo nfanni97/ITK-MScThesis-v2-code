@@ -1,0 +1,25 @@
+FROM cytoacrtest.azurecr.io/cytorelease:golang as builder
+
+# submodules and makefile
+RUN mkdir /workdir
+COPY protocols /workdir/protocols
+COPY Makefile /workdir
+WORKDIR /workdir
+
+# go
+COPY go.mod .
+COPY go.sum .
+RUN go mod download
+
+# project files
+COPY DBHelper.go .
+COPY main.go .
+COPY metric.go .
+COPY sql_leaser_checkpointer.go .
+
+RUN make build
+
+FROM alpine:edge 
+COPY --from=builder /workdir/bin/eventhub-receiver . 
+
+ENTRYPOINT ["./eventhub-receiver"]
